@@ -1,5 +1,6 @@
 import tkinter as Tk
 import socket
+import os
 
 class ClientGui:
     def __init__(self, root, game):
@@ -26,11 +27,11 @@ class ClientGui:
         self.endGameText = Tk.StringVar()
 
         self.mainFrame = Tk.Frame(self.root)
-        self.mainTurnLabel = Tk.Label(self.mainFrame, text=self.turnText)
+        self.mainTurnLabel = Tk.Label(self.mainFrame, textvariable=self.turnText)
         self.mainCanvas = Tk.Canvas(self.mainFrame, height=600, width=700)
 
         self.endGameFrame = Tk.Frame(self.root)
-        self.endGameMessageLabel = Tk.Label(self.endGameFrame, text = self.endGameText)
+        self.endGameMessageLabel = Tk.Label(self.endGameFrame, textvariable = self.endGameText)
         self.backButton = Tk.Button(self.endGameFrame, text = "Retour au menu", command = self.backToMenu)
 
         self.name = ""
@@ -132,7 +133,8 @@ class ClientGui:
         self.unBindMouse()
         self.socket.close()
         self.root.destroy()
-        exit(0)
+        #exit(0)
+        os._exit(0)
     
     def bindMouse(self):
         self.root.bind("<Button 1>",self.updateMouseCoord)
@@ -183,6 +185,7 @@ class ClientGui:
         if (data.find("/con") != -1):
             self.game.player = int(data.split()[1])
             self.opponentName = data.split()[2]
+            self.socket.send(b"/a")
             self.displayCanvas()
             self.play()
     
@@ -253,7 +256,7 @@ class ClientGui:
                 isCorrectPlay = False
                 self.sendPlayedColumn(playedColumn)
             else :
-                self.turnText.set("En attente de {} pour jouer")
+                self.turnText.set("En attente de {} pour jouer".format(self.opponentName))
                 self.root.createfilehandler(self.socket, Tk.READABLE, self.updatePlayedValue)
                 print("Waiting for socket")
                 self.root.wait_variable(self.lastPlayedValue)

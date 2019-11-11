@@ -31,10 +31,10 @@ class Game:
         self.numPlayer = 3 - self.numPlayer
     
     def testGameEnd(self):
-        self.continuePlaying = self.testGridFull() or self.testVictory()
+        self.continuePlaying = not (self.testGridFull() or self.testVictory())
 
     def testGridFull(self):
-        return not(all([all(line) for line in self.grid]))
+        return (all([all(line) for line in self.grid]))
         
     def testVictory(self):
         return self.testVictoireDiagonal() or self.testVictoryColumn() or self.testVictoireLine()
