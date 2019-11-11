@@ -8,6 +8,7 @@ class Game:
         self.player = player
         self.numPlayer = 1
         self.continuePlaying = True
+        self.playedTurn = True
     
     def isPlayerTurn(self):
         return self.player == self.numPlayer

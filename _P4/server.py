@@ -8,43 +8,65 @@ class ThreadedServer(object):
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.sock.bind((self.host, self.port))
-        self.clients = []
-        self.clientThreads = []
+        self.clients = {}
+        self.clientThreads = {}
         self.waitingClient = []
-        self.playingThreads = []
+        self.playingThreads = {}
+        self.stop = False
 
     def listen(self):
         self.sock.listen(5)
-        while True:
+        i = 0
+        while not self.stop:
             client, address = self.sock.accept()
             print('Accepted client')
-            self.clients.append([client, address, ""])
-            client.settimeout(60)
-            self.clientThreads.append(threading.Thread(target = self.listenToClient,args = self.clients[len(self.clients) - 1] + [len(self.clients) - 1]))
-            self.clientThreads[-1].start()
+            self.clients[i] = [client, address, ""]
+            #client.settimeout(60)
+            self.clientThreads[i] = (threading.Thread(target = self.listenToClient,args = self.clients[i][:-1] + [i]))
+            self.clientThreads[i].start()
+            i+=1
+        self.sock.close()
+        for i,t in self.clientThreads.items():
+            t.join()
+        for i,t in self.playingThreads.items():
+            t.join()
     
     def getClientsNames(self):
+        if len(self.waitingClient) == 0:
+            return "/noNames"
         out = "/names ["
         for i in self.waitingClient:
-            out += "({}; {}),".format(i, self.clients[i][3])
-        return out[:-2]+"]"
+            out += "({}; {}),".format(i, self.clients[i][2])
+        return out[:-1]+"]"
 
     def listenToClient(self, client, address, i):
         print('Launched thread')
-        data = client.recv(255)
+        data = client.recv(255).decode('utf-8')
+        if not data:
+            client.close()
+            self.clients.pop(i)
+            return
+        elif data.find("/quit") != -1:
+            client.close()
+            self.stop = True
+            return
         self.clients[i][2] = data
-        client.send(self.getClientsNames())
-        data = client.recv(255)
-        if data.find("/wait") != -1:
+        client.send(self.getClientsNames().encode('utf-8'))
+        data = client.recv(255).decode('utf-8')
+        if not data:
+            self.clients.pop(i)
+            return
+        elif data.find("/wait") != -1:
             self.waitingClient.append(i)
         elif data.find("/opp") != -1:
-            id, oppName = data[6:-2].split(", ")
+            id, oppName = data[6:-1].split(", ")
+            print(data, id, oppName, self.clients[int(id)][2])
             if self.clients[int(id)][2] == oppName:
-                self.clients[int(id)][0].send("/con 2")
-                client.send("/con 1")
-                self.waitingClient.remove((id, oppName))
-                self.playingThreads.append(threading.Thread(target = self.play,args = (i,int(id))))
-                self.playingThreads[-1].start()
+                self.clients[int(id)][0].send(("/con 2 {}".format(self.clients[i][2])).encode('utf-8'))
+                client.send(("/con 1 {}".format(self.clients[int(id)][2])).encode('utf-8'))
+                self.waitingClient.remove(int(id))
+                self.playingThreads[(i, int(id))] = (threading.Thread(target = self.play,args = (i,int(id))))
+                self.playingThreads[(i, int(id))].start()
         
         """while True:
             try:
@@ -65,35 +87,50 @@ class ThreadedServer(object):
 
         continueGame = True
         numPlayer = 1
-        while continueGame:
+        while continueGame and not self.stop:
             if numPlayer == 1:
-                data = self.clients[firstClientId][0].recv(255)
-                if data.find("/play") != -1:
+                data = self.clients[firstClientId][0].recv(255).decode('utf-8')
+                print(data)
+                if not data:
+                    self.clients[firstClientId][0].close()
+                    self.clients[secondClientId][0].send(b"/dis")
+                    self.clients.pop(firstClientId)
+                    self.clientThreads.pop(firstClientId)
+                    break
+                elif data.find("/play") != -1:
                     #columnPlayed = int(data[6:])
-                    self.clients[secondClientId][0].send(data)
+                    self.clients[secondClientId][0].send(data.encode('utf-8'))
                 elif data.find("/full") != -1:
-                    self.clients[secondClientId][0].send(data)
+                    self.clients[secondClientId][0].send(data.encode('utf-8'))
                     continueGame = False
                 elif data.find("/win") != -1:
-                    self.clients[secondClientId][0].send(data)
+                    self.clients[secondClientId][0].send(data.encode('utf-8'))
                     continueGame = False
 
             else:
-                data = self.clients[secondClientId][0].recv(255)
+                data = self.clients[secondClientId][0].recv(255).decode('utf-8')
+                if not data:
+                    self.clients[secondClientId][0].close()
+                    self.clients[firstClientId][0].send(b"/dis")
+                    self.clients.pop(secondClientId)
+                    self.clientThreads.pop(secondClientId)
+                    break
                 if data.find("/play") != -1:
                     #columnPlayed = int(data[6:])
-                    self.clients[firstClientId][0].send(data)
+                    self.clients[firstClientId][0].send(data.encode('utf-8'))
                 elif data.find("/full") != -1:
-                    self.clients[firstClientId][0].send(data)
+                    self.clients[firstClientId][0].send(data.encode('utf-8'))
                     continueGame = False
                 elif data.find("/win") != -1:
-                    self.clients[firstClientId][0].send(data)
+                    self.clients[firstClientId][0].send(data.encode('utf-8'))
                     continueGame = False
             
             numPlayer = 3 - numPlayer
         
-        self.clientThreads[firstClientId].start()
-        self.clientThreads[secondClientId].start()
+        if self.clientThreads.get(firstClientId):
+            self.clientThreads[firstClientId] = (threading.Thread(target = self.listenToClient,args = self.clients[firstClientId][:-1] + [firstClientId]))
+        if self.clientThreads.get(secondClientId):
+            self.clientThreads[secondClientId] = (threading.Thread(target = self.listenToClient,args = self.clients[secondClientId][:-1] + [secondClientId]))
 
 
 
